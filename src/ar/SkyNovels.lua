@@ -40,11 +40,16 @@ local function toNovelItem(novel)
     local title   = novel["title"] or "بدون عنوان"
     local cover   = novel["coverImage"] or ""
     local coverURL = ""
+    -- Handle base64 encoded images - they won't work in Shosetsu, so skip them
     if cover ~= "" and cover:sub(1, 4) == "http" then
         coverURL = cover
     end
-    -- Novel constructor takes (title, imageURL) - NOT id
-    return Novel(title, coverURL)
+    -- Novel constructor takes (title, imageURL) - using table syntax for clarity
+    return Novel {
+        title = title,
+        link = "",  -- Will be set by the listing system
+        imageURL = coverURL
+    }
 end
 
 -- ─── shrinkURL / expandURL ────────────────────────────────────
@@ -68,8 +73,13 @@ local listings = {
         if not ok or result == nil then return {} end
         local novels = {}
         local list = result["data"] or {}
-        for _, novel in ipairs(list) do
-            novels[#novels + 1] = toNovelItem(novel)
+        for i, novel in ipairs(list) do
+            local novelItem = toNovelItem(novel)
+            -- Set the link using the novel ID from API
+            if novel["_id"] then
+                novelItem.link = "/novels/" .. novel["_id"]
+            end
+            novels[#novels + 1] = novelItem
         end
         return novels
     end),
@@ -82,7 +92,11 @@ local listings = {
         local novels = {}
         for _, novel in ipairs(result["data"] or {}) do
             if novel["category"] == "مترجمة" then
-                novels[#novels + 1] = toNovelItem(novel)
+                local novelItem = toNovelItem(novel)
+                if novel["_id"] then
+                    novelItem.link = "/novels/" .. novel["_id"]
+                end
+                novels[#novels + 1] = novelItem
             end
         end
         return novels
@@ -96,7 +110,11 @@ local listings = {
         local novels = {}
         for _, novel in ipairs(result["data"] or {}) do
             if novel["category"] == "مؤلفة" then
-                novels[#novels + 1] = toNovelItem(novel)
+                local novelItem = toNovelItem(novel)
+                if novel["_id"] then
+                    novelItem.link = "/novels/" .. novel["_id"]
+                end
+                novels[#novels + 1] = novelItem
             end
         end
         return novels
@@ -108,22 +126,10 @@ local listings = {
 local function parseNovel(novelURL)
     local url = expandURL(novelURL, KEY_NOVEL_URL)
     local ok, result = pcall(getJSON, url, false)
-    if not ok or result == nil then return Novel() end
+    if not ok or result == nil then return nil end
 
     local novel   = result["data"] or result
     local novelId = novel["_id"] or ""
-
-    -- فصول
-    local total    = tonumber(novel["totalChapters"]) or 0
-    local chapters = {}
-    for i = 1, total do
-        local chPath = "/novels/" .. novelId .. "/chapters/" .. i
-        chapters[#chapters + 1] = NovelChapter(
-            i,
-            "الفصل " .. i,
-            shrinkURL(baseURL .. chPath, KEY_CHAPTER_URL)
-        )
-    end
 
     -- وصف
     local desc = (novel["description"] or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
@@ -146,14 +152,32 @@ local function parseNovel(novelURL)
     local tags    = novel["tags"] or {}
     local tagsStr = table.concat(tags, ", ")
 
-    return NovelInfo(
-        novel["title"] or "بدون عنوان",
-        coverURL,
-        desc,
-        tagsStr,
-        status,
-        chapters
-    )
+    -- Create NovelInfo object using table syntax (matching official examples)
+    local info = NovelInfo {
+        title = novel["title"] or "بدون عنوان",
+        imageURL = coverURL,
+        description = desc,
+        genre = tagsStr,
+        status = status,
+        author = novel["author"] or "",
+    }
+
+    -- فصول - load chapters if they exist
+    local total    = tonumber(novel["totalChapters"]) or 0
+    if total > 0 then
+        local chapters = {}
+        for i = 1, total do
+            local chPath = "/novels/" .. novelId .. "/chapters/" .. i
+            chapters[#chapters + 1] = NovelChapter {
+                order = i,
+                title = "الفصل " .. i,
+                link = shrinkURL(baseURL .. chPath, KEY_CHAPTER_URL)
+            }
+        end
+        info:setChapters(AsList(chapters))
+    end
+
+    return info
 end
 
 -- ─── getPassage ───────────────────────────────────────────────
@@ -217,7 +241,11 @@ local function search(data)
 
     local novels = {}
     for _, novel in ipairs(list) do
-        novels[#novels + 1] = toNovelItem(novel)
+        local novelItem = toNovelItem(novel)
+        if novel["_id"] then
+            novelItem.link = "/novels/" .. novel["_id"]
+        end
+        novels[#novels + 1] = novelItem
     end
     return novels
 end
