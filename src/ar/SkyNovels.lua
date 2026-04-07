@@ -1,26 +1,19 @@
--- {"id":7001,"ver":"1.0.0","libVer":"1.0.0","author":"You","repo":"https://raw.githubusercontent.com/YOUR_USERNAME/sky-novels-shosetsu/main/","dep":[]}
+-- {"id":7001,"ver":"1.1.0","libVer":"1.0.0","author":"zhmouhamed980-afk","repo":"https://raw.githubusercontent.com/zhmouhamed980-afk/sky-novels-shosetsu/main/","dep":[]}
 
 --- سماء الروايات — Shosetsu Extension
 --- API Base: http://62.171.141.197:5007
----
---- ملاحظة: السيرفر يحتاج Bearer token للبحث وقراءة الفصول.
---- أضف token في إعدادات المصدر (Settings → Sources → سماء الروايات → ⚙).
 
 -- ─── معلومات المصدر ──────────────────────────────────────────
 local id       = 7001
 local name     = "سماء الروايات"
 local baseURL  = "http://62.171.141.197:5007"
-local imageURL = "https://raw.githubusercontent.com/YOUR_USERNAME/sky-novels-shosetsu/main/icons/SkyNovels.png"
+local imageURL = "https://raw.githubusercontent.com/zhmouhamed980-afk/sky-novels-shosetsu/main/icons/SkyNovels.png"
 
--- ─── الإعدادات الداخلية ──────────────────────────────────────
--- token يُحفظ هنا بعد إدخاله من المستخدم في settingsModel
-local settings = {
-    [1] = ""   -- Bearer token
-}
+-- ─── Token مدمج (صالح حتى 2126) ──────────────────────────────
+local BEARER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OGY3NmM0MjY5ZmZlNDhhNTliZjg0MjkiLCJpYXQiOjE3NzU1NzI4MzAsImV4cCI6NDkyOTE3MjgzMH0.WFpmtBMLZnxSNV4JuV7c-4CPV04r4HSLomNHHKLJpG8"
 
-local settingsModel = {
-    TextFilter(1, "Bearer Token (من حساب سماء الروايات)")
-}
+local settings = {}
+local settingsModel = {}
 
 local chapterType        = ChapterType.HTML
 local hasSearch          = true
@@ -29,15 +22,14 @@ local startIndex         = 1
 
 -- ─── دوال مساعدة ─────────────────────────────────────────────
 
---- بناء headers الطلب مع token إذا توفّر
+--- بناء headers الطلب مع token المدمج
 local function buildHeaders(requireAuth)
     local headers = {
         ["Content-Type"]  = "application/json",
         ["Accept"]        = "application/json"
     }
-    local token = settings[1]
-    if requireAuth and token ~= nil and token ~= "" then
-        headers["Authorization"] = "Bearer " .. token
+    if requireAuth then
+        headers["Authorization"] = "Bearer " .. BEARER_TOKEN
     end
     return headers
 end
@@ -212,14 +204,6 @@ local function getPassage(chapterURL)
     -- chapterURL مثال: "/novels/abc123/chapters/5"
     local url = expandURL(chapterURL, KEY_CHAPTER_URL)
 
-    local token = settings[1]
-    if token == nil or token == "" then
-        return [[<html><body dir="rtl" style="font-family:serif;padding:20px">
-            <p style="color:red;font-size:1.2em">⚠️ يجب إضافة Bearer Token في إعدادات المصدر لقراءة الفصول.</p>
-            <p>اذهب إلى: Sources ← سماء الروايات ← ⚙ ← Bearer Token</p>
-        </body></html>]]
-    end
-
     local ok, result = pcall(getJSON, url, true)
     if not ok or result == nil then
         return "<html><body dir='rtl'><p>تعذّر تحميل الفصل. تأكد من صحة الـ Token والاتصال بالإنترنت.</p></body></html>"
@@ -279,9 +263,6 @@ end
 local function search(data)
     local query = data[QUERY] or ""
     if query == "" then return {} end
-
-    local token = settings[1]
-    if token == nil or token == "" then return {} end
 
     local url = baseURL .. "/novels/search?q=" .. query
     local ok, result = pcall(getJSON, url, true)
