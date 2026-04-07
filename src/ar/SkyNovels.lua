@@ -37,14 +37,14 @@ local function getJSON(url, auth)
 end
 
 local function toNovelItem(novel)
-    local novelId = novel["_id"] or ""
     local title   = novel["title"] or "بدون عنوان"
     local cover   = novel["coverImage"] or ""
     local coverURL = ""
     if cover ~= "" and cover:sub(1, 4) == "http" then
         coverURL = cover
     end
-    return Novel(novelId, title, coverURL)
+    -- Novel constructor takes (title, imageURL) - NOT id
+    return Novel(title, coverURL)
 end
 
 -- ─── shrinkURL / expandURL ────────────────────────────────────
@@ -119,10 +119,9 @@ local function parseNovel(novelURL)
     for i = 1, total do
         local chPath = "/novels/" .. novelId .. "/chapters/" .. i
         chapters[#chapters + 1] = NovelChapter(
-            shrinkURL(baseURL .. chPath, KEY_CHAPTER_URL),
-            "الفصل " .. i,
             i,
-            false
+            "الفصل " .. i,
+            shrinkURL(baseURL .. chPath, KEY_CHAPTER_URL)
         )
     end
 
