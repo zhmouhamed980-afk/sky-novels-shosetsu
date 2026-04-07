@@ -1,97 +1,71 @@
--- {"id":7001,"ver":"1.1.0","libVer":"1.0.0","author":"zhmouhamed980-afk","repo":"https://raw.githubusercontent.com/zhmouhamed980-afk/sky-novels-shosetsu/main/","dep":[]}
+-- {"id":7001,"ver":"1.2.0","libVer":"1.0.0","author":"zhmouhamed980-afk","repo":"https://raw.githubusercontent.com/zhmouhamed980-afk/sky-novels-shosetsu/main/","dep":[]}
 
---- سماء الروايات — Shosetsu Extension
+--- سماء الروايات — Shosetsu Extension v1.2
 --- API Base: http://62.171.141.197:5007
 
--- ─── معلومات المصدر ──────────────────────────────────────────
-local id       = 7001
-local name     = "سماء الروايات"
-local baseURL  = "http://62.171.141.197:5007"
+local id      = 7001
+local name    = "سماء الروايات"
+local baseURL = "http://62.171.141.197:5007"
 local imageURL = "https://raw.githubusercontent.com/zhmouhamed980-afk/sky-novels-shosetsu/main/icons/SkyNovels.png"
 
--- ─── Token مدمج (صالح حتى 2126) ──────────────────────────────
-local BEARER_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OGY3NmM0MjY5ZmZlNDhhNTliZjg0MjkiLCJpYXQiOjE3NzU1NzI4MzAsImV4cCI6NDkyOTE3MjgzMH0.WFpmtBMLZnxSNV4JuV7c-4CPV04r4HSLomNHHKLJpG8"
-
-local settings = {}
-local settingsModel = {}
+-- Token مدمج صالح حتى 2126
+local TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OGY3NmM0MjY5ZmZlNDhhNTliZjg0MjkiLCJpYXQiOjE3NzU1NzI4MzAsImV4cCI6NDkyOTE3MjgzMH0.WFpmtBMLZnxSNV4JuV7c-4CPV04r4HSLomNHHKLJpG8"
 
 local chapterType        = ChapterType.HTML
 local hasSearch          = true
-local isSearchIncrementing = false   -- البحث لا يرجع صفحات متعددة
+local isSearchIncrementing = false
 local startIndex         = 1
 
 -- ─── دوال مساعدة ─────────────────────────────────────────────
 
---- بناء headers الطلب مع token المدمج
-local function buildHeaders(requireAuth)
-    local headers = {
-        ["Content-Type"]  = "application/json",
-        ["Accept"]        = "application/json"
-    }
-    if requireAuth then
-        headers["Authorization"] = "Bearer " .. BEARER_TOKEN
+local function buildHeaders(auth)
+    local b = HeadersBuilder()
+    b:add("Content-Type", "application/json")
+    b:add("Accept", "application/json")
+    if auth then
+        b:add("Authorization", "Bearer " .. TOKEN)
     end
-    return headers
+    return b:build()
 end
 
---- GET طلب JSON وإرجاع جدول Lua
-local function getJSON(url, requireAuth)
-    local headers = buildHeaders(requireAuth)
-    local response = RequestDocument(GET(url, headers))
-    -- RequestDocument يُرجع document HTML, نحتاج النص الخام
-    -- في Shosetsu نستخدم Request() للحصول على string
-    local raw = Request(GET(url, headers)):body()
-    return JSON:decode(raw)
+local function getJSON(url, auth)
+    local req = _GET(url, buildHeaders(auth), DEFAULT_CACHE_CONTROL())
+    local res = Request(req)
+    local body = res:body()
+    if body == nil or body == "" then return nil end
+    return JSON:decode(body)
 end
 
---- POST طلب JSON وإرجاع جدول Lua
-local function postJSON(url, body)
-    local headers = {
-        ["Content-Type"] = "application/json",
-        ["Accept"]       = "application/json"
-    }
-    local raw = Request(POST(url, headers, RequestBody(JSON:encode(body), MEDIATYPE_JSON))):body()
-    return JSON:decode(raw)
-end
-
---- تحويل كائن رواية من API إلى NovelItem لـ Shosetsu
 local function toNovelItem(novel)
-    local cover = novel["coverImage"] or ""
-    -- السيرفر قد يُرجع base64 — Shosetsu لا يدعمها مباشرة، نتركها فارغة
+    local novelId = novel["_id"] or ""
+    local title   = novel["title"] or "بدون عنوان"
+    local cover   = novel["coverImage"] or ""
     local coverURL = ""
     if cover ~= "" and cover:sub(1, 4) == "http" then
         coverURL = cover
     end
-
-    -- نستخدم _id كجزء من الـ URL المُختصر
-    local novelId = novel["_id"] or ""
-    return Novel(novelId, novel["title"] or "بدون عنوان", coverURL)
+    return Novel(novelId, title, coverURL)
 end
 
 -- ─── shrinkURL / expandURL ────────────────────────────────────
 
 local function shrinkURL(url, type)
-    -- نحذف baseURL من الأمام ونبقي المسار فقط
-    -- مثال: "http://62.171.141.197:5007/novels/abc123" → "/novels/abc123"
     return url:gsub(baseURL, "")
 end
 
 local function expandURL(url, type)
+    if url:sub(1, 4) == "http" then return url end
     return baseURL .. url
 end
 
--- ─── القوائم (Listings) ───────────────────────────────────────
+-- ─── Listings ─────────────────────────────────────────────────
 
 local listings = {
-
-    --- قائمة "جميع الروايات" — تجلب 20 رواية لكل صفحة
     Listing("جميع الروايات", true, function(data)
         local page = data[PAGE_INDEX] or 1
         local url  = baseURL .. "/novels?page=" .. page .. "&limit=20"
-
         local ok, result = pcall(getJSON, url, false)
         if not ok or result == nil then return {} end
-
         local novels = {}
         local list = result["data"] or {}
         for _, novel in ipairs(list) do
@@ -100,17 +74,13 @@ local listings = {
         return novels
     end),
 
-    --- قائمة "مترجمة" — تصفية على الجانب بعد جلب الصفحة
     Listing("مترجمة", true, function(data)
         local page = data[PAGE_INDEX] or 1
         local url  = baseURL .. "/novels?page=" .. page .. "&limit=100"
-
         local ok, result = pcall(getJSON, url, false)
         if not ok or result == nil then return {} end
-
         local novels = {}
-        local list = result["data"] or {}
-        for _, novel in ipairs(list) do
+        for _, novel in ipairs(result["data"] or {}) do
             if novel["category"] == "مترجمة" then
                 novels[#novels + 1] = toNovelItem(novel)
             end
@@ -118,110 +88,97 @@ local listings = {
         return novels
     end),
 
-    --- قائمة "مؤلفة"
     Listing("مؤلفة", true, function(data)
         local page = data[PAGE_INDEX] or 1
         local url  = baseURL .. "/novels?page=" .. page .. "&limit=100"
-
         local ok, result = pcall(getJSON, url, false)
         if not ok or result == nil then return {} end
-
         local novels = {}
-        local list = result["data"] or {}
-        for _, novel in ipairs(list) do
+        for _, novel in ipairs(result["data"] or {}) do
             if novel["category"] == "مؤلفة" then
                 novels[#novels + 1] = toNovelItem(novel)
             end
         end
         return novels
     end),
-
 }
 
 -- ─── parseNovel ───────────────────────────────────────────────
 
 local function parseNovel(novelURL)
-    -- novelURL هنا هو المسار المُختصر: "/novels/abc123"
     local url = expandURL(novelURL, KEY_NOVEL_URL)
-
     local ok, result = pcall(getJSON, url, false)
-    if not ok or result == nil then
-        return NovelInfo()
-    end
+    if not ok or result == nil then return Novel() end
 
-    local novel = result["data"] or result
+    local novel   = result["data"] or result
     local novelId = novel["_id"] or ""
 
-    -- بناء قائمة الفصول
-    local totalChapters = tonumber(novel["totalChapters"]) or 0
+    -- فصول
+    local total    = tonumber(novel["totalChapters"]) or 0
     local chapters = {}
-    for i = 1, totalChapters do
+    for i = 1, total do
         local chPath = "/novels/" .. novelId .. "/chapters/" .. i
         chapters[#chapters + 1] = NovelChapter(
-            shrinkURL(baseURL .. chPath, KEY_CHAPTER_URL),  -- URL مُختصر
-            "الفصل " .. i,                                  -- الاسم
-            i,                                              -- الترتيب
-            false                                           -- لم يُقرأ
+            shrinkURL(baseURL .. chPath, KEY_CHAPTER_URL),
+            "الفصل " .. i,
+            i,
+            false
         )
     end
 
-    -- معالجة الوصف
+    -- وصف
     local desc = (novel["description"] or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
 
-    -- معالجة الغلاف
+    -- غلاف
     local cover = novel["coverImage"] or ""
     local coverURL = ""
-    if cover ~= "" and cover:sub(1, 4) == "http" then
-        coverURL = cover
-    end
+    if cover ~= "" and cover:sub(1, 4) == "http" then coverURL = cover end
 
-    -- الحالة
+    -- حالة
     local status = NovelStatus.UNKNOWN
-    local statusStr = novel["status"] or ""
-    if statusStr == "مكتملة" then
+    local st     = novel["status"] or ""
+    if st == "مكتملة" then
         status = NovelStatus.COMPLETED
-    elseif statusStr == "مستمرة" then
+    elseif st == "مستمرة" then
         status = NovelStatus.PUBLISHING
     end
 
-    -- التاجز
-    local tags = novel["tags"] or {}
+    -- تاجز
+    local tags    = novel["tags"] or {}
     local tagsStr = table.concat(tags, ", ")
 
     return NovelInfo(
-        novel["title"] or "بدون عنوان",   -- title
-        coverURL,                           -- imageURL
-        desc,                               -- description
-        tagsStr,                            -- tags (string)
-        status,                             -- status
-        chapters                            -- chapters
+        novel["title"] or "بدون عنوان",
+        coverURL,
+        desc,
+        tagsStr,
+        status,
+        chapters
     )
 end
 
 -- ─── getPassage ───────────────────────────────────────────────
 
 local function getPassage(chapterURL)
-    -- chapterURL مثال: "/novels/abc123/chapters/5"
     local url = expandURL(chapterURL, KEY_CHAPTER_URL)
-
     local ok, result = pcall(getJSON, url, true)
+
     if not ok or result == nil then
-        return "<html><body dir='rtl'><p>تعذّر تحميل الفصل. تأكد من صحة الـ Token والاتصال بالإنترنت.</p></body></html>"
+        return "<html><body dir='rtl' style='padding:20px;color:#e8e8e8;background:#0d0d14'><p>⚠️ تعذّر تحميل الفصل. تأكد من الاتصال بالإنترنت.</p></body></html>"
     end
 
-    local data = result["data"] or result
+    local data    = result["data"] or result
     local title   = data["title"]   or ""
     local content = data["content"] or ""
 
     if title == "" and content == "" then
-        return "<html><body dir='rtl'><p>⚠️ بيانات فارغة لهذا الفصل.</p></body></html>"
+        return "<html><body dir='rtl' style='padding:20px;color:#e8e8e8;background:#0d0d14'><p>⚠️ بيانات فارغة لهذا الفصل.</p></body></html>"
     end
 
-    -- تحويل النص إلى HTML: كل سطر غير فارغ → <p>
     content = content:gsub("\r\n", "\n"):gsub("\r", "\n")
     local paragraphs = ""
     for line in content:gmatch("[^\n]+") do
-        line = line:match("^%s*(.-)%s*$") -- trim
+        line = line:match("^%s*(.-)%s*$")
         if line ~= "" then
             paragraphs = paragraphs .. "<p>" .. line .. "</p>\n"
         end
@@ -232,23 +189,11 @@ local function getPassage(chapterURL)
 <head>
 <meta charset="UTF-8">
 <style>
-  body {
-    font-family: 'Amiri', 'Traditional Arabic', serif;
-    font-size: 1.1em;
-    line-height: 1.9;
-    padding: 16px;
-    max-width: 720px;
-    margin: auto;
-    background: #0d0d14;
-    color: #e8e8e8;
-    direction: rtl;
-  }
-  h2 {
-    color: #f5a623;
-    text-align: center;
-    margin-bottom: 1.5em;
-  }
-  p { margin-bottom: 0.8em; }
+  body { font-family: serif; font-size: 1.1em; line-height: 1.9;
+         padding: 16px; max-width: 720px; margin: auto;
+         background: #0d0d14; color: #e8e8e8; direction: rtl; }
+  h2   { color: #f5a623; text-align: center; margin-bottom: 1.5em; }
+  p    { margin-bottom: 0.8em; }
 </style>
 </head>
 <body>
@@ -268,7 +213,6 @@ local function search(data)
     local ok, result = pcall(getJSON, url, true)
     if not ok or result == nil then return {} end
 
-    -- السيرفر يُرجع { success, data: [...] } أو مصفوفة مباشرة
     local list = result["data"] or result
     if type(list) ~= "table" then return {} end
 
@@ -277,12 +221,6 @@ local function search(data)
         novels[#novels + 1] = toNovelItem(novel)
     end
     return novels
-end
-
--- ─── updateSetting ────────────────────────────────────────────
-
-local function updateSetting(settingId, value)
-    settings[settingId] = value
 end
 
 -- ─── الإرجاع ─────────────────────────────────────────────────
@@ -301,7 +239,5 @@ return {
     isSearchIncrementing = isSearchIncrementing,
     chapterType          = chapterType,
     startIndex           = startIndex,
-    settings             = settingsModel,
     search               = search,
-    updateSetting        = updateSetting,
 }
